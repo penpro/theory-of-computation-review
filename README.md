@@ -123,3 +123,13 @@ scheduler/mastery/gating unit tests.
 
 *Question bank drafted from the Sipser text and your exam materials. If any
 keyed answer looks wrong, tell me the question and I'll fix it.*
+
+## Credits
+
+- Math is rendered with **[KaTeX](https://katex.org/)**, bundled offline in
+  [`vendor/katex/`](vendor/katex/). KaTeX is © 2013–2020 Khan Academy and other
+  contributors, released under the MIT License — see
+  [`vendor/katex/LICENSE`](vendor/katex/LICENSE).
+- Content is a study aid based on Michael Sipser, *Introduction to the Theory of
+  Computation* (3rd ed.); the questions are original concept-checks for personal
+  review and are not affiliated with or endorsed by the author or publisher.
