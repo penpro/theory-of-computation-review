@@ -10,7 +10,7 @@
       version: 1,
       settings: Object.assign({}, TOC.DEFAULTS, { unlocked: [] }),
       progress: {},                     // id -> per-question state
-      stats: { answered: 0, correct: 0, clock: 0, started: nowMs() }
+      stats: { answered: 0, correct: 0, clock: 0, streak: 0, bestStreak: 0, started: nowMs() }
     };
   }
 
@@ -23,7 +23,9 @@
       else s.settings = Object.assign({}, TOC.DEFAULTS, s.settings);
       if (!Array.isArray(s.settings.unlocked)) s.settings.unlocked = [];
       if (!s.progress) s.progress = {};
-      if (!s.stats) s.stats = { answered: 0, correct: 0, clock: 0, started: nowMs() };
+      if (!s.stats) s.stats = { answered: 0, correct: 0, clock: 0, streak: 0, bestStreak: 0, started: nowMs() };
+      if (typeof s.stats.streak !== "number") s.stats.streak = 0;
+      if (typeof s.stats.bestStreak !== "number") s.stats.bestStreak = 0;
       return s;
     } catch (e) { console.warn("load failed", e); return null; }
   }

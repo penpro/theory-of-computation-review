@@ -160,8 +160,10 @@
   function updateChips() {
     var meta = current ? TOC.chapterMeta(current.chapter) : null;
     $("chip-chapter").textContent = meta ? meta.short : "—";
-    var st = current ? state.progress[current.id] : null;
-    $("chip-streak").textContent = "streak " + (st ? st.streak : 0);
+    var gs = state.stats.streak || 0;
+    var sc = $("chip-streak");
+    sc.textContent = "🔥 " + gs + " in a row";
+    sc.title = "Consecutive correct answers across all questions — one wrong answer resets it. Best so far: " + (state.stats.bestStreak || 0) + ". (The 3 dots on each question track mastering that one specific question.)";
     var due = TOC.engine.dueCount(TOC.BANK, state.progress, state.settings, clock());
     $("chip-due").textContent = due + " due";
   }
@@ -252,6 +254,9 @@
     state.stats.answered++;
     if (result.correct) state.stats.correct++;
     state.stats.clock++;
+    // global running streak (consecutive correct across all questions)
+    state.stats.streak = result.correct ? (state.stats.streak || 0) + 1 : 0;
+    if (state.stats.streak > (state.stats.bestStreak || 0)) state.stats.bestStreak = state.stats.streak;
     var after = TOC.engine.unlockedChapterNums(TOC.BANK, state.progress, state.settings);
     save(); refreshHeader();
 
@@ -377,7 +382,8 @@
       stat(Math.round(o.mastery * 100) + "%", "overall mastery") +
       stat(o.mastered + "/" + o.total, "questions mastered") +
       stat(state.stats.answered, "answered") +
-      stat(acc + "%", "accuracy");
+      stat(acc + "%", "accuracy") +
+      stat("🔥 " + (state.stats.bestStreak || 0), "best streak");
 
     var grid = $("chapter-grid"); grid.innerHTML = "";
     var sepDone = false;
