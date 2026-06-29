@@ -383,8 +383,9 @@
     var html = '<div class="verdict">' + verdict + "</div>";
     if (showCorrect) html += '<div class="explain" id="fb-correct"></div>';
     html += '<div class="explain" id="fb-explain"></div>';
-    if (q.whyMatters) html += '<div class="why-matters" id="fb-why"></div>';
-    if (q.realWorld) html += '<div class="real-world" id="fb-real"></div>';
+    var wm = whyFor(q);
+    if (wm && wm.why) html += '<div class="why-matters" id="fb-why"></div>';
+    if (wm && wm.real) html += '<div class="real-world" id="fb-real"></div>';
     if (q.source) html += '<div class="source">Source: ' + TOC.ui.escapeHtml(q.source) + "</div>";
     if (unlockedNow && unlockedNow.length) {
       html += '<div class="source" style="color:var(--good);font-weight:700">🔓 Unlocked: ' +
@@ -396,8 +397,8 @@
 
     if (showCorrect) TOC.ui.setRich($("fb-correct"), "**Answer:** " + correctAnswerText(q));
     TOC.ui.setRich($("fb-explain"), q.explanation || "");
-    if (q.whyMatters) TOC.ui.setRich($("fb-why"), "**🎯 Why this matters.** " + q.whyMatters);
-    if (q.realWorld) TOC.ui.setRich($("fb-real"), "**🌍 In the real world.** " + q.realWorld);
+    if (wm && wm.why) TOC.ui.setRich($("fb-why"), "**🎯 Why this matters.** " + wm.why);
+    if (wm && wm.real) TOC.ui.setRich($("fb-real"), "**🌍 In the real world.** " + wm.real);
     var eb = $("explain-btn");
     eb.addEventListener("click", toggleDeep);
     if (!result.correct) eb.classList.add("pulse"); // draw the eye after a miss
@@ -416,6 +417,25 @@
   }
 
   function conceptText(c) { return (c.title ? "**" + c.title + "**\n\n" : "") + (c.body || ""); }
+
+  // Why-this-matters + real-world for a question: a per-question whyMatters /
+  // realWorld if present, else the topic-level entry from TOC.WHY (exact
+  // chapter::topic match, then any chapter with that topic) so every question
+  // gets one via its topic. Returns { why, real } or null.
+  function whyFor(q) {
+    if (!q) return null;
+    if (q.whyMatters || q.realWorld) return { why: q.whyMatters, real: q.realWorld };
+    var W = TOC.WHY;
+    if (W && q.topic) {
+      var e = W[q.chapter + "::" + q.topic];
+      if (!e) {
+        var keys = Object.keys(W);
+        for (var i = 0; i < keys.length; i++) { if (keys[i].split("::")[1] === q.topic) { e = W[keys[i]]; break; } }
+      }
+      if (e) return { why: e.why, real: e.real };
+    }
+    return null;
+  }
 
   // Deeper explanation for a question: a per-question `deep` field if present,
   // else the concept explainer for its topic (exact chapter match, then any

@@ -12,7 +12,7 @@ var only = process.argv[2];
 var files = [];
 function add(name) { var p = path.join(__dirname, "..", "js", "questions", name + ".js"); if (fs.existsSync(p)) files.push([name, p]); }
 if (only) { var nm = only.replace(/^ch/, "").match(/^\d+$/) ? "ch" + only.replace(/^ch/, "") : only; add(nm); add(nm + "-defs"); }
-else { for (var i = 0; i <= 8; i++) { add("ch" + i); add("ch" + i + "-defs"); } add("exam1"); add("exam2"); add("final"); add("discussions"); }
+else { for (var i = 0; i <= 8; i++) { add("ch" + i); add("ch" + i + "-defs"); } add("exam1"); add("exam2"); add("final"); add("discussions"); add("discussions2"); }
 
 var errors = [], warnings = [];
 function err(id, m) { errors.push((id || "?") + ": " + m); }
