@@ -177,7 +177,7 @@
     return '<span class="qmastery" title="' + (mastered ? "Mastered" : have + " of " + state.settings.masterStreak + " correct in a row") + '">' + dots + "</span>";
   }
 
-  var TYPE_LABEL = { tf: "True / False", mc: "Multiple choice", multi: "Select all", fib: "Fill in the blank", order: "Put in order" };
+  var TYPE_LABEL = { tf: "True / False", mc: "Multiple choice", multi: "Select all", fib: "Fill in the blank", order: "Put in order", discussion: "Discussion" };
 
   function renderQuestion(q) {
     var area = $("question-area");
@@ -217,6 +217,13 @@
       TOC.ui.renderMath(fig); // labels may contain \(...\)
     }
 
+    if (q.type === "discussion") {
+      currentInput = null;
+      renderDiscussion(q, card);
+      area.appendChild(card);
+      return;
+    }
+
     currentInput = TOC.ui.buildInput(q);
     card.appendChild(currentInput.node);
 
@@ -240,17 +247,117 @@
     if (currentInput.focus) currentInput.focus();
   }
 
+  // ---- discussion: a real-world scenario plus a guided series of auto-graded
+  // sub-questions, revealed one at a time with teaching after each. Reports one
+  // result to the engine (correct only if every step was right), so it counts
+  // toward mastery like any other question. ----
+  function renderDiscussion(q, card) {
+    var steps = q.steps || [];
+    var results = [];
+    var stepsWrap = TOC.ui.el("div", "disc-steps");
+    card.appendChild(stepsWrap);
+    var controls = TOC.ui.el("div", "actions");
+    card.appendChild(controls);
+    var fb = TOC.ui.el("div", "feedback");
+    fb.id = "feedback"; fb.hidden = true;
+    card.appendChild(fb);
+
+    function renderStep(i) {
+      var step = steps[i];
+      var box = TOC.ui.el("div", "disc-step");
+      box.appendChild(TOC.ui.el("div", "disc-step-n", "Step " + (i + 1) + " of " + steps.length));
+      var sp = TOC.ui.el("div", "disc-q"); TOC.ui.setRich(sp, step.prompt); box.appendChild(sp);
+      if (step.diagram || step.svg) {
+        var fig = TOC.ui.el("div", "figure");
+        try { fig.innerHTML = step.svg ? step.svg : TOC.automaton(step.diagram); } catch (e) { fig.textContent = "[diagram]"; }
+        box.appendChild(fig); TOC.ui.renderMath(fig);
+      }
+      var isTF = step.type === "tf";
+      var optionTexts = isTF ? ["True", "False"] : step.choices.slice();
+      var correctIdx = isTF ? (step.answer ? 0 : 1) : step.answer;
+      var order = optionTexts.map(function (_, k) { return k; });
+      if (!isTF) { for (var a = order.length - 1; a > 0; a--) { var b = Math.floor(Math.random() * (a + 1)); var t = order[a]; order[a] = order[b]; order[b] = t; } }
+      var optsWrap = TOC.ui.el("div", "options");
+      var nodes = [], selected = null, checked = false;
+      order.forEach(function (origK, pos) {
+        var opt = TOC.ui.el("div", "opt");
+        opt.appendChild(TOC.ui.el("div", "key", isTF ? (optionTexts[origK] === "True" ? "T" : "F") : String(pos + 1)));
+        var body = TOC.ui.el("div", "opt-body"); TOC.ui.setRich(body, optionTexts[origK]); opt.appendChild(body);
+        opt.addEventListener("click", function () {
+          if (checked) return;
+          selected = origK;
+          nodes.forEach(function (n, j) { n.classList.toggle("sel", order[j] === origK); });
+        });
+        optsWrap.appendChild(opt); nodes.push(opt);
+      });
+      box.appendChild(optsWrap);
+      var explain = TOC.ui.el("div", "disc-explain"); explain.hidden = true; box.appendChild(explain);
+      stepsWrap.appendChild(box);
+
+      controls.innerHTML = "";
+      var btn = TOC.ui.el("button", "btn", "Check");
+      controls.appendChild(btn);
+      btn.focus();
+      btn.addEventListener("click", function () {
+        if (!checked) {
+          if (selected == null) { flashEl(btn); return; }
+          checked = true;
+          var ok = selected === correctIdx;
+          results[i] = ok;
+          nodes.forEach(function (n, j) {
+            n.setAttribute("disabled", "");
+            if (order[j] === correctIdx) n.classList.add("correct");
+            else if (order[j] === selected) n.classList.add("wrong");
+          });
+          TOC.ui.setRich(explain, (ok ? "**✓ Right.** " : "**✗ Not quite.** ") + (step.explain || ""));
+          explain.hidden = false;
+          box.classList.add("done");
+          btn.textContent = (i + 1 < steps.length) ? "Next step →" : "See why this matters →";
+          btn.focus();
+        } else {
+          if (i + 1 < steps.length) renderStep(i + 1);
+          else finish();
+        }
+      });
+    }
+
+    function finish() {
+      var n = steps.length, k = results.filter(Boolean).length;
+      answered = true;
+      applyResult(q, { correct: n > 0 && k === n, tally: k + " / " + n });
+      controls.innerHTML = "";
+      var next = TOC.ui.el("button", "btn", "Next →");
+      next.id = "next-btn";
+      next.addEventListener("click", nextQuestion);
+      controls.appendChild(next); next.focus();
+    }
+
+    renderStep(0);
+  }
+
+  function flashEl(b) {
+    if (!b || !b.animate) return;
+    b.animate([{ transform: "translateX(0)" }, { transform: "translateX(-6px)" }, { transform: "translateX(6px)" }, { transform: "translateX(0)" }], { duration: 220 });
+  }
+
   function onSubmit() {
-    if (answered || !current) return;
+    if (answered || !current || !currentInput) return;
     if (!currentInput.hasSelection()) { flashSubmit(); return; }
     // choice widgets shuffle/sample their options, so they grade themselves;
     // fib/order fall back to the central grader.
     var result = currentInput.evaluate ? currentInput.evaluate() : TOC.grade(current, currentInput.getResponse());
     answered = true;
     currentInput.reveal(result);
+    applyResult(current, result);
+    swapToNext();
+  }
 
+  // Record a graded answer: update the engine, stats, streak, persistence,
+  // header, and feedback panel. Shared by the normal submit flow and the
+  // multi-step discussion flow. Does NOT swap the action button.
+  function applyResult(q, result) {
     var before = TOC.engine.unlockedChapterNums(TOC.BANK, state.progress, state.settings);
-    TOC.engine.onAnswer(state.progress, current.id, result.correct, clock(), state.settings);
+    TOC.engine.onAnswer(state.progress, q.id, result.correct, clock(), state.settings);
     state.stats.answered++;
     if (result.correct) state.stats.correct++;
     state.stats.clock++;
@@ -259,9 +366,7 @@
     if (state.stats.streak > (state.stats.bestStreak || 0)) state.stats.bestStreak = state.stats.streak;
     var after = TOC.engine.unlockedChapterNums(TOC.BANK, state.progress, state.settings);
     save(); refreshHeader();
-
-    showFeedback(current, result, after.length > before.length ? diffChapters(before, after) : null);
-    swapToNext();
+    showFeedback(q, result, after.length > before.length ? diffChapters(before, after) : null);
   }
 
   function diffChapters(before, after) {
@@ -273,9 +378,13 @@
     fb.className = "feedback " + (result.correct ? "good" : "bad");
     fb.hidden = false;
     var verdict = result.correct ? "✓ Correct" : "✗ Not quite";
+    if (result.tally) verdict = (result.correct ? "✓ All steps right — " : "→ ") + result.tally + " steps";
+    var showCorrect = !result.correct && !!correctAnswerText(q);
     var html = '<div class="verdict">' + verdict + "</div>";
-    if (!result.correct) html += '<div class="explain" id="fb-correct"></div>';
+    if (showCorrect) html += '<div class="explain" id="fb-correct"></div>';
     html += '<div class="explain" id="fb-explain"></div>';
+    if (q.whyMatters) html += '<div class="why-matters" id="fb-why"></div>';
+    if (q.realWorld) html += '<div class="real-world" id="fb-real"></div>';
     if (q.source) html += '<div class="source">Source: ' + TOC.ui.escapeHtml(q.source) + "</div>";
     if (unlockedNow && unlockedNow.length) {
       html += '<div class="source" style="color:var(--good);font-weight:700">🔓 Unlocked: ' +
@@ -285,8 +394,10 @@
     html += '<div class="deep-help" id="deep-help" hidden></div>';
     fb.innerHTML = html;
 
-    if (!result.correct) TOC.ui.setRich($("fb-correct"), "**Answer:** " + correctAnswerText(q));
+    if (showCorrect) TOC.ui.setRich($("fb-correct"), "**Answer:** " + correctAnswerText(q));
     TOC.ui.setRich($("fb-explain"), q.explanation || "");
+    if (q.whyMatters) TOC.ui.setRich($("fb-why"), "**🎯 Why this matters.** " + q.whyMatters);
+    if (q.realWorld) TOC.ui.setRich($("fb-real"), "**🌍 In the real world.** " + q.realWorld);
     var eb = $("explain-btn");
     eb.addEventListener("click", toggleDeep);
     if (!result.correct) eb.classList.add("pulse"); // draw the eye after a miss
@@ -336,6 +447,7 @@
         return /[\\^_{}]/.test(a) ? "\\(" + a + "\\)" : a; // render math-looking answers
       }
       case "order": return q.items.map(function (t, i) { return (i + 1) + ". " + t; }).join("  ");
+      case "discussion": return "";
       default: return "";
     }
   }
@@ -364,7 +476,7 @@
     var tag = (e.target.tagName || "").toLowerCase();
     if (e.key === "Enter") {
       if (answered) { var nb = $("next-btn"); if (nb) { e.preventDefault(); nextQuestion(); } }
-      else { e.preventDefault(); onSubmit(); }
+      else if (currentInput) { e.preventDefault(); onSubmit(); }
       return;
     }
     if (tag === "input") return; // don't hijack typing in fill-in-the-blank

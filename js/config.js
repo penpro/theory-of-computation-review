@@ -55,6 +55,7 @@
 
   TOC.rankOf = function (q) {
     if (q.rank != null) return q.rank;
+    if (q.type === "discussion") return 30;
     var lp = (q.prompt || "").toLowerCase();
     if (/in plain terms|what is a|what is an|what is the|what does .*(mean|denote|stand for)|shorthand for|\bis called\b|\bare called\b|called the|denoted|the term for|stands for/.test(lp)) return 0;
     if (q.diagram) return 40;
