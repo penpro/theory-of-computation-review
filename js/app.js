@@ -2,7 +2,7 @@
 (function (root) {
   var TOC = root.TOC;
   var $ = function (id) { return document.getElementById(id); };
-  var state, current = null, currentInput = null, answered = false, drillTopic = null;
+  var state, current = null, currentInput = null, answered = false, drillTopic = null, exam = null;
 
   // ---- boot --------------------------------------------------------------
   function boot() {
@@ -13,6 +13,7 @@
     buildFocusOptions();
     $("focus-select").addEventListener("change", function () { drillTopic = null; nextQuestion(); });
     $("goto-num").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); gotoNumber(); } });
+    $("mock-btn").addEventListener("click", startExamSetup);
     document.addEventListener("keydown", onKey);
     refreshHeader();
     maybeWarnStorage();
@@ -360,7 +361,7 @@
   }
 
   function onSubmit() {
-    if (answered || !current || !currentInput) return;
+    if (exam || answered || !current || !currentInput) return;
     if (!currentInput.hasSelection()) { flashSubmit(); return; }
     // choice widgets shuffle/sample their options, so they grade themselves;
     // fib/order fall back to the central grader.
@@ -508,10 +509,176 @@
     b.animate([{ transform: "translateX(0)" }, { transform: "translateX(-6px)" }, { transform: "translateX(6px)" }, { transform: "translateX(0)" }], { duration: 220 });
   }
 
+  // ---- mock exam: timed, batch-graded, feedback deferred to a score report ---
+  // A separate assessment — it does NOT touch the spaced-repetition progress.
+  function startExamSetup() {
+    drillTopic = null; if (exam) endExam();
+    showView("study");
+    var sc = document.querySelector(".study-controls"); if (sc) sc.style.display = "";
+    $("study-empty").hidden = true;
+    var area = $("question-area"); area.innerHTML = "";
+    var card = TOC.ui.el("div", "card exam-setup");
+    card.innerHTML = '<h2>🎓 Mock exam</h2><p class="muted">A timed batch drawn from every chapter — no feedback until you finish, then a scored report with a per-chapter breakdown. Your mastery progress is left untouched.</p>';
+    var presets = [[10, 15, "Quick"], [20, 30, "Standard"], [40, 60, "Full final"]];
+    var row = TOC.ui.el("div", "exam-presets");
+    presets.forEach(function (p) {
+      var b = TOC.ui.el("button", "btn", "<strong>" + p[2] + "</strong><span>" + p[0] + " questions &middot; " + p[1] + " min</span>");
+      b.addEventListener("click", function () { startExam(p[0], p[1]); });
+      row.appendChild(b);
+    });
+    card.appendChild(row);
+    var cancel = TOC.ui.el("button", "btn ghost small", "Cancel");
+    cancel.addEventListener("click", function () { nextQuestion(); });
+    card.appendChild(cancel);
+    area.appendChild(card);
+    if (window.scrollTo) window.scrollTo(0, 0);
+  }
+
+  function sampleExam(n) {
+    var pool = TOC.BANK.filter(function (q) {
+      return !TOC.isExamBucket(q.chapter) && q.type !== "discussion" && TOC.rankOf(q) >= 10;
+    }).slice();
+    for (var i = pool.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
+    return pool.slice(0, Math.min(n, pool.length));
+  }
+
+  function startExam(n, minutes) {
+    var qs = sampleExam(n);
+    if (!qs.length) return;
+    exam = { qs: qs, i: 0, results: [], minutes: minutes, endAt: Date.now() + minutes * 60000, timer: null, finished: false };
+    var sc = document.querySelector(".study-controls"); if (sc) sc.style.display = "none";
+    exam.timer = setInterval(updateExamTimer, 500);
+    renderExamQuestion();
+  }
+
+  function renderExamQuestion() {
+    if (!exam) return;
+    var q = exam.qs[exam.i];
+    current = q; answered = false;
+    var area = $("question-area"); area.innerHTML = "";
+    var card = TOC.ui.el("div", "card");
+    var head = TOC.ui.el("div", "exam-head");
+    head.innerHTML = '<span class="exam-prog">Question ' + (exam.i + 1) + ' / ' + exam.qs.length + '</span><span class="exam-timer" id="exam-timer">⏱</span>';
+    card.appendChild(head);
+    var meta = TOC.ui.el("div", "qmeta");
+    meta.appendChild(TOC.ui.el("span", "badge", TOC.chapterMeta(q.chapter).short));
+    if (q.topic) meta.appendChild(TOC.ui.el("span", "badge", TOC.ui.escapeHtml(q.topic)));
+    meta.appendChild(TOC.ui.el("span", "badge type", TYPE_LABEL[q.type] || q.type));
+    card.appendChild(meta);
+    var prompt = TOC.ui.el("div", "prompt"); TOC.ui.setRich(prompt, q.prompt); card.appendChild(prompt);
+    if (q.diagram || q.svg || q.grid) {
+      var fig = TOC.ui.el("div", "figure");
+      try { fig.innerHTML = q.svg ? q.svg : q.grid ? TOC.grid(q.grid) : TOC.automaton(q.diagram); } catch (e) { fig.textContent = "[diagram]"; }
+      card.appendChild(fig); TOC.ui.renderMath(fig);
+    }
+    currentInput = TOC.ui.buildInput(q);
+    card.appendChild(currentInput.node);
+    if (q.type === "multi") card.appendChild(TOC.ui.el("p", "muted small", "Select all that apply."));
+    var actions = TOC.ui.el("div", "actions");
+    var btn = TOC.ui.el("button", "btn", exam.i + 1 < exam.qs.length ? "Submit & next →" : "Finish exam");
+    btn.addEventListener("click", examSubmit);
+    actions.appendChild(btn);
+    var skip = TOC.ui.el("button", "btn ghost small", "Skip");
+    skip.addEventListener("click", function () { exam.results[exam.i] = { q: q, correct: false, skipped: true }; advanceExam(); });
+    actions.appendChild(skip);
+    card.appendChild(actions);
+    area.appendChild(card);
+    updateExamTimer();
+    if (currentInput.focus) currentInput.focus();
+    if (window.scrollTo) window.scrollTo(0, 0);
+  }
+
+  function examSubmit() {
+    if (!exam || !currentInput) return;
+    if (!currentInput.hasSelection()) {
+      var b = document.querySelector("#question-area .actions .btn");
+      if (b && b.animate) b.animate([{ transform: "translateX(0)" }, { transform: "translateX(-6px)" }, { transform: "translateX(6px)" }, { transform: "translateX(0)" }], { duration: 220 });
+      return;
+    }
+    var result = currentInput.evaluate ? currentInput.evaluate() : TOC.grade(exam.qs[exam.i], currentInput.getResponse());
+    exam.results[exam.i] = { q: exam.qs[exam.i], correct: !!result.correct };
+    advanceExam();
+  }
+
+  function advanceExam() {
+    exam.i++;
+    if (exam.i >= exam.qs.length) finishExam();
+    else renderExamQuestion();
+  }
+
+  function updateExamTimer() {
+    if (!exam || exam.finished) return;
+    var el = $("exam-timer");
+    var left = Math.max(0, Math.round((exam.endAt - Date.now()) / 1000));
+    if (el) {
+      var m = Math.floor(left / 60), s = left % 60;
+      el.textContent = "⏱ " + m + ":" + (s < 10 ? "0" : "") + s;
+      el.classList.toggle("low", left <= 60);
+    }
+    if (left <= 0) finishExam();
+  }
+
+  function finishExam() {
+    if (!exam || exam.finished) return;
+    exam.finished = true;
+    if (exam.timer) { clearInterval(exam.timer); exam.timer = null; }
+    var total = exam.qs.length, answeredN = 0, correct = 0, byCh = {};
+    exam.qs.forEach(function (q, i) {
+      var r = exam.results[i];
+      byCh[q.chapter] = byCh[q.chapter] || { n: 0, ok: 0 };
+      byCh[q.chapter].n++;
+      if (r) { if (!r.skipped) answeredN++; if (r.correct) { correct++; byCh[q.chapter].ok++; } }
+    });
+    var pct = Math.round(100 * correct / total);
+    var area = $("question-area"); area.innerHTML = "";
+    var card = TOC.ui.el("div", "card exam-report");
+    var html = '<h2>Mock exam &middot; ' + pct + '%</h2>' +
+      '<p class="exam-score">' + correct + ' / ' + total + ' correct' + (answeredN < total ? ' &middot; ' + (total - answeredN) + ' left blank' : '') + '</p>' +
+      '<div class="exam-breakdown">';
+    Object.keys(byCh).sort(function (a, b) { return a - b; }).forEach(function (c) {
+      var b = byCh[c];
+      html += '<div class="exam-chrow"><span class="ec-name">' + TOC.chapterMeta(Number(c)).short + '</span><span class="wbar"><span style="width:' + Math.round(100 * b.ok / b.n) + '%"></span></span><span class="ec-num">' + b.ok + '/' + b.n + '</span></div>';
+    });
+    html += '</div>';
+    var misses = [];
+    exam.qs.forEach(function (q, i) { var r = exam.results[i]; if (!r || !r.correct) misses.push(q); });
+    if (misses.length) html += '<h3>Review your misses (' + misses.length + ')</h3><ul class="exam-misses" id="exam-misses"></ul>';
+    html += '<div class="actions"><button class="btn" id="exam-again">New mock exam</button><button class="btn ghost" id="exam-done">Back to study</button></div>';
+    card.innerHTML = html;
+    area.appendChild(card);
+    TOC.ui.renderMath(card);
+    if (misses.length) {
+      var ul = $("exam-misses");
+      misses.forEach(function (q) {
+        var li = TOC.ui.el("li");
+        var p = TOC.ui.el("span", "miss-prompt"); TOC.ui.setRich(p, snippet(q)); li.appendChild(p);
+        var go = TOC.ui.el("button", "btn ghost small", "Review #" + qNum(q));
+        go.addEventListener("click", function () { endExam(); showSpecific(q); });
+        li.appendChild(go); ul.appendChild(li);
+      });
+    }
+    $("exam-again").addEventListener("click", function () { var n = exam.qs.length, m = exam.minutes; endExam(); startExam(n, m); });
+    $("exam-done").addEventListener("click", function () { endExam(); nextQuestion(); });
+    if (window.scrollTo) window.scrollTo(0, 0);
+  }
+
+  function endExam() {
+    if (exam && exam.timer) clearInterval(exam.timer);
+    exam = null;
+    var sc = document.querySelector(".study-controls"); if (sc) sc.style.display = "";
+  }
+
   // ---- keyboard ----------------------------------------------------------
   function onKey(e) {
     if ($("view-study").hidden) return;
     if (e.target && e.target.id === "goto-num") return; // the go-to box handles its own keys
+    if (exam && !exam.finished) {
+      if (e.key === "Enter") { e.preventDefault(); var eb = document.querySelector("#question-area .actions .btn"); if (eb) eb.click(); return; }
+      if ((e.target.tagName || "").toLowerCase() === "input") return;
+      var ek = e.key.toLowerCase();
+      if (currentInput && (/^[0-9]$/.test(ek) || ek === "t" || ek === "f")) currentInput.handleKey(ek);
+      return;
+    }
     var tag = (e.target.tagName || "").toLowerCase();
     if (e.key === "Enter") {
       if (answered) { var nb = $("next-btn"); if (nb) { e.preventDefault(); nextQuestion(); } }
