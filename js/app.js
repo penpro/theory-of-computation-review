@@ -2,7 +2,7 @@
 (function (root) {
   var TOC = root.TOC;
   var $ = function (id) { return document.getElementById(id); };
-  var state, current = null, currentInput = null, answered = false;
+  var state, current = null, currentInput = null, answered = false, drillTopic = null;
 
   // ---- boot --------------------------------------------------------------
   function boot() {
@@ -11,7 +11,7 @@
     wireNav();
     wireSettings();
     buildFocusOptions();
-    $("focus-select").addEventListener("change", nextQuestion);
+    $("focus-select").addEventListener("change", function () { drillTopic = null; nextQuestion(); });
     $("goto-num").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); gotoNumber(); } });
     document.addEventListener("keydown", onKey);
     refreshHeader();
@@ -61,6 +61,7 @@
   function gotoNumber() {
     var v = parseInt($("goto-num").value, 10);
     if (isNaN(v) || v < 1 || v > TOC.BANK.length) return;
+    drillTopic = null;
     showView("study");
     showSpecific(TOC.BANK[v - 1]);
   }
@@ -70,6 +71,16 @@
     renderQuestion(q); updateChips();
     if (window.scrollTo) window.scrollTo(0, 0);
   }
+
+  // Drill a single topic across all unlocked chapters (launched from the
+  // dashboard's weak-topics list). Overrides the Focus dropdown until cleared.
+  function startTopicDrill(topic) {
+    drillTopic = topic;
+    showView("study");
+    if (window.scrollTo) window.scrollTo(0, 0);
+    nextQuestion();
+  }
+  function clearDrill() { if (!drillTopic) return; drillTopic = null; nextQuestion(); }
 
   // short, math-safe prompt preview for the dashboard flag list
   function snippet(q) {
@@ -147,7 +158,7 @@
   // ---- study loop --------------------------------------------------------
   function nextQuestion() {
     answered = false;
-    var q = TOC.engine.pickNext(TOC.BANK, state.progress, state.settings, clock(), currentFocus());
+    var q = TOC.engine.pickNext(TOC.BANK, state.progress, state.settings, clock(), currentFocus(), drillTopic);
     current = q;
     var area = $("question-area");
     var empty = $("study-empty");
@@ -160,6 +171,13 @@
   function updateChips() {
     var meta = current ? TOC.chapterMeta(current.chapter) : null;
     $("chip-chapter").textContent = meta ? meta.short : "—";
+    var chips = $("chip-chapter").parentNode;
+    var dc = $("chip-drill");
+    if (drillTopic) {
+      if (!dc) { dc = TOC.ui.el("span", "chip drill"); dc.id = "chip-drill"; chips.insertBefore(dc, chips.firstChild); }
+      dc.innerHTML = "🎯 " + TOC.ui.escapeHtml(drillTopic) + ' <span class="chip-x" title="Stop drilling this topic">✕</span>';
+      dc.querySelector(".chip-x").onclick = function (e) { e.stopPropagation(); clearDrill(); };
+    } else if (dc) { dc.parentNode.removeChild(dc); }
     var gs = state.stats.streak || 0;
     var sc = $("chip-streak");
     sc.textContent = "🔥 " + gs + " in a row";
@@ -210,9 +228,9 @@
     TOC.ui.setRich(prompt, q.prompt);
     card.appendChild(prompt);
 
-    if (q.diagram || q.svg) {
+    if (q.diagram || q.svg || q.grid) {
       var fig = TOC.ui.el("div", "figure");
-      try { fig.innerHTML = q.svg ? q.svg : TOC.automaton(q.diagram); } catch (e) { fig.textContent = "[diagram]"; }
+      try { fig.innerHTML = q.svg ? q.svg : q.grid ? TOC.grid(q.grid) : TOC.automaton(q.diagram); } catch (e) { fig.textContent = "[diagram]"; }
       card.appendChild(fig);
       TOC.ui.renderMath(fig); // labels may contain \(...\)
     }
@@ -267,9 +285,9 @@
       var box = TOC.ui.el("div", "disc-step");
       box.appendChild(TOC.ui.el("div", "disc-step-n", "Step " + (i + 1) + " of " + steps.length));
       var sp = TOC.ui.el("div", "disc-q"); TOC.ui.setRich(sp, step.prompt); box.appendChild(sp);
-      if (step.diagram || step.svg) {
+      if (step.diagram || step.svg || step.grid) {
         var fig = TOC.ui.el("div", "figure");
-        try { fig.innerHTML = step.svg ? step.svg : TOC.automaton(step.diagram); } catch (e) { fig.textContent = "[diagram]"; }
+        try { fig.innerHTML = step.svg ? step.svg : step.grid ? TOC.grid(step.grid) : TOC.automaton(step.diagram); } catch (e) { fig.textContent = "[diagram]"; }
         box.appendChild(fig); TOC.ui.renderMath(fig);
       }
       var isTF = step.type === "tf";
@@ -591,10 +609,14 @@
     var wl = $("weak-list");
     wl.innerHTML = rows.length ? "" : '<li class="muted">Answer a few questions and your weak spots will show up here.</li>';
     rows.forEach(function (r) {
-      var li = TOC.ui.el("li");
-      li.innerHTML = '<span>' + TOC.ui.escapeHtml(r.key.split(" · ")[1]) + '</span>' +
+      var topic = r.key.split(" · ")[1];
+      var li = TOC.ui.el("li", "weak-row");
+      li.title = "Drill this topic across your unlocked chapters";
+      li.innerHTML = '<span>' + TOC.ui.escapeHtml(topic) + '</span>' +
         '<span class="wbar"><span style="width:' + Math.round(r.m * 100) + '%"></span></span>' +
-        '<span class="wch">' + r.key.split(" · ")[0] + " · " + Math.round(r.m * 100) + '%</span>';
+        '<span class="wch">' + r.key.split(" · ")[0] + " · " + Math.round(r.m * 100) + '%</span>' +
+        '<span class="drill-go">drill →</span>';
+      li.addEventListener("click", function () { startTopicDrill(topic); });
       wl.appendChild(li);
     });
   }

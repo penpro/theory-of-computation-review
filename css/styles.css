@@ -301,3 +301,12 @@ kbd { background: var(--panel-2); border: 1px solid var(--line); border-bottom-w
 .why-matters { background: color-mix(in srgb, var(--brand) 9%, var(--panel)); border: 1px solid color-mix(in srgb, var(--brand) 28%, transparent); }
 .real-world { background: color-mix(in srgb, var(--good) 9%, var(--panel)); border: 1px solid color-mix(in srgb, var(--good) 26%, transparent); }
 .feedback .why-matters strong, .feedback .real-world strong { color: var(--ink); }
+
+/* topic-drill chip + clickable weak-topic rows */
+.chip.drill { background: var(--brand-soft); color: var(--brand); border-color: color-mix(in srgb, var(--brand) 35%, transparent); display: inline-flex; align-items: center; gap: .35rem; }
+.chip.drill .chip-x { cursor: pointer; font-weight: 700; opacity: .7; padding: 0 .15rem; border-radius: 4px; }
+.chip.drill .chip-x:hover { opacity: 1; background: color-mix(in srgb, var(--brand) 18%, transparent); }
+.weak-list li.weak-row { cursor: pointer; border-radius: 8px; padding-left: .45rem; padding-right: .45rem; transition: background .12s; }
+.weak-list li.weak-row:hover { background: var(--panel-2); }
+.weak-row .drill-go { font-size: .72rem; font-weight: 700; color: var(--brand); opacity: 0; transition: opacity .12s; }
+.weak-row:hover .drill-go { opacity: 1; }

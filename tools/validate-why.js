@@ -12,8 +12,8 @@ var TOC = globalThis.TOC;
 
 // load the question bank (to know which topics are actually used)
 var qnames = [];
-for (var i = 0; i <= 8; i++) { qnames.push("ch" + i, "ch" + i + "-defs"); }
-qnames.push("exam1", "exam2", "final", "discussions", "discussions2");
+for (var i = 0; i <= 8; i++) { qnames.push("ch" + i, "ch" + i + "-defs", "ch" + i + "-hands-on"); }
+qnames.push("exam1", "exam2", "final", "discussions", "discussions2", "discussions3", "practical-regex", "proof-order");
 qnames.forEach(function (n) { var p = path.join(__dirname, "..", "js", "questions", n + ".js"); if (fs.existsSync(p)) require(p); });
 
 // load the why files
