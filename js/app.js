@@ -106,13 +106,14 @@
 
   // ---- views -------------------------------------------------------------
   function showView(name) {
-    ["study", "dashboard", "settings"].forEach(function (v) {
+    ["study", "dashboard", "reference", "settings"].forEach(function (v) {
       $("view-" + v).hidden = v !== name;
     });
     document.querySelectorAll(".nav-btn").forEach(function (b) {
       b.classList.toggle("active", b.dataset.view === name);
     });
     if (name === "dashboard") renderDashboard();
+    if (name === "reference") renderReference();
     if (name === "settings") renderSettings();
   }
 
@@ -621,6 +622,78 @@
     });
   }
   function stat(v, l) { return '<div class="stat"><div class="v">' + v + '</div><div class="l">' + l + "</div></div>"; }
+
+  // ---- reference / cheat-sheet -------------------------------------------
+  var REF_COMPLEXITY_SVG = '<svg viewBox="0 0 380 150" xmlns="http://www.w3.org/2000/svg" font-family="Georgia, \'Times New Roman\', serif"><rect x="8" y="8" width="364" height="134" rx="10" fill="none" stroke="var(--ink-soft)" stroke-width="1.5"/><text x="16" y="24" font-size="12" fill="var(--ink-soft)">EXPTIME</text><rect x="28" y="30" width="324" height="104" rx="9" fill="none" stroke="var(--ink-soft)" stroke-width="1.5"/><text x="36" y="46" font-size="12" fill="var(--ink-soft)">PSPACE</text><rect x="54" y="52" width="272" height="74" rx="8" fill="none" stroke="var(--brand)" stroke-width="1.5"/><text x="62" y="68" font-size="12" fill="var(--brand)">NP</text><rect x="84" y="74" width="212" height="44" rx="7" fill="var(--brand-soft)" stroke="var(--brand)" stroke-width="1.5"/><text x="190" y="101" text-anchor="middle" font-size="13" font-weight="700" fill="var(--brand)">P</text></svg>';
+  var REF_HIERARCHY_SVG = '<svg viewBox="0 0 380 150" xmlns="http://www.w3.org/2000/svg" font-family="Georgia, \'Times New Roman\', serif"><rect x="8" y="8" width="364" height="134" rx="10" fill="none" stroke="var(--ink-soft)" stroke-width="1.5"/><text x="16" y="24" font-size="11" fill="var(--ink-soft)">Turing-recognizable</text><rect x="28" y="30" width="324" height="104" rx="9" fill="none" stroke="var(--ink-soft)" stroke-width="1.5"/><text x="36" y="46" font-size="11" fill="var(--ink-soft)">decidable</text><rect x="54" y="52" width="272" height="74" rx="8" fill="none" stroke="var(--brand)" stroke-width="1.5"/><text x="62" y="68" font-size="11" fill="var(--brand)">context-free</text><rect x="84" y="74" width="212" height="44" rx="7" fill="var(--brand-soft)" stroke="var(--brand)" stroke-width="1.5"/><text x="190" y="101" text-anchor="middle" font-size="12" font-weight="700" fill="var(--brand)">regular</text></svg>';
+
+  function renderReference() {
+    function block(title, inner) { return '<section class="ref-block"><h3>' + title + "</h3>" + inner + "</section>"; }
+    function cells(a) { return a.map(function (v) { return '<td class="' + (v ? "yes" : "no") + '">' + (v ? "✓" : "✗") + "</td>"; }).join(""); }
+    function crow(name, a) { return "<tr><th>" + name + "</th>" + cells(a) + "</tr>"; }
+    function nrow(s, d) { return "<tr><th>" + s + "</th><td>" + d + "</td></tr>"; }
+
+    var closure = block("Closure properties",
+      '<div class="ref-scroll"><table class="ref-table"><thead><tr><th>Class</th><th>∪</th><th>∩</th><th>compl.</th><th>concat</th><th>star</th></tr></thead><tbody>' +
+      crow("Regular", [1, 1, 1, 1, 1]) +
+      crow("Context-free", [1, 0, 0, 1, 1]) +
+      crow("Decidable", [1, 1, 1, 1, 1]) +
+      crow("T-recognizable", [1, 1, 0, 1, 1]) +
+      '</tbody></table></div><p class="ref-note">CFLs are <strong>not</strong> closed under \\(\\cap\\) or complement; recognizable languages are <strong>not</strong> closed under complement — which is exactly why \\(A_{TM}\\) is recognizable but \\(\\overline{A_{TM}}\\) is not.</p>');
+
+    var decid = block("Decidable? Recognizable?",
+      '<div class="ref-scroll"><table class="ref-table"><thead><tr><th>Problem</th><th>Decidable</th><th>Recog.</th><th>co-Recog.</th></tr></thead><tbody>' +
+      crow("\\(A_{DFA}, E_{DFA}, EQ_{DFA}\\)", [1, 1, 1]) +
+      crow("\\(A_{CFG}, E_{CFG}\\)", [1, 1, 1]) +
+      crow("\\(A_{TM}, HALT_{TM}\\)", [0, 1, 0]) +
+      crow("\\(E_{TM}\\)", [0, 0, 1]) +
+      crow("\\(EQ_{TM}\\)", [0, 0, 0]) +
+      '</tbody></table></div><p class="ref-note">Decidable = Recognizable <em>and</em> co-Recognizable (Thm 4.22). \\(A_{TM}\\) is the canonical recognizable-but-undecidable language; \\(EQ_{TM}\\) is neither.</p>');
+
+    var maps = block("The class maps", '<div class="ref-maps">' + REF_HIERARCHY_SVG + REF_COMPLEXITY_SVG + "</div>");
+
+    var complete = block("Canonical complete problems",
+      '<ul class="ref-list">' +
+      "<li><strong>NP-complete:</strong> SAT, 3SAT, CLIQUE, VERTEX-COVER, INDEPENDENT-SET, HAMPATH, SUBSET-SUM</li>" +
+      "<li><strong>PSPACE-complete:</strong> TQBF, FORMULA-GAME, generalized geography (GG)</li>" +
+      "<li><strong>NL-complete:</strong> PATH (directed \\(s\\to t\\) reachability), 2SAT</li>" +
+      "<li><strong>In P:</strong> PATH, RELPRIME, and <em>every</em> context-free language</li>" +
+      "</ul>");
+
+    var pump = block("Pumping lemmas",
+      '<p><strong>Regular:</strong> if \\(A\\) is regular there is a length \\(p\\) so every \\(s\\in A\\) with \\(|s|\\ge p\\) splits as \\(s=xyz\\): (i) \\(xy^iz\\in A\\) for all \\(i\\ge 0\\), (ii) \\(|y|>0\\), (iii) \\(|xy|\\le p\\).</p>' +
+      '<p><strong>Context-free:</strong> if \\(A\\) is a CFL there is a \\(p\\) so every \\(s\\in A\\), \\(|s|\\ge p\\), splits as \\(s=uvxyz\\): (i) \\(uv^ixy^iz\\in A\\) for all \\(i\\ge 0\\), (ii) \\(|vy|>0\\), (iii) \\(|vxy|\\le p\\).</p>' +
+      '<p class="ref-note">To prove non-regular / non-context-free: <em>you</em> pick \\(s\\); the adversary splits it; you pump to a string outside \\(A\\).</p>');
+
+    var thms = block("Key theorems",
+      '<ul class="ref-list">' +
+      '<li><strong>Church–Turing:</strong> "algorithm" = Turing machine.</li>' +
+      "<li><strong>Rice:</strong> every nontrivial property of \\(L(M)\\) is undecidable.</li>" +
+      "<li><strong>Cook–Levin:</strong> SAT is NP-complete.</li>" +
+      "<li><strong>Savitch:</strong> \\(NSPACE(f)\\subseteq SPACE(f^2)\\) for \\(f\\ge\\log n\\).</li>" +
+      "<li><strong>Immerman–Szelepcsényi:</strong> \\(NL=coNL\\).</li>" +
+      "<li><strong>Hierarchy:</strong> regular \\(\\subsetneq\\) CFL \\(\\subsetneq\\) decidable \\(\\subsetneq\\) recognizable; and \\(L\\subseteq NL\\subseteq P\\subseteq NP\\subseteq PSPACE\\subseteq EXPTIME\\).</li>" +
+      "</ul>");
+
+    var notation = block("Notation",
+      '<div class="ref-scroll"><table class="ref-table notation"><tbody>' +
+      nrow("\\(\\Sigma,\\ \\Sigma^*\\)", "an alphabet; all finite strings over it") +
+      nrow("\\(\\varepsilon\\)", "the empty string") +
+      nrow("\\(\\emptyset\\)", "the empty set / empty language") +
+      nrow("\\(\\delta\\)", "a machine's transition function") +
+      nrow("\\(L(M)\\)", "the language a machine \\(M\\) recognizes") +
+      nrow("\\(\\langle M, w\\rangle\\)", "a string encoding the objects \\(M, w\\)") +
+      nrow("\\(\\overline{A}\\)", "the complement of language \\(A\\)") +
+      nrow("\\(A\\le_m B\\)", "\\(A\\) mapping-reduces to \\(B\\) (computable \\(f\\))") +
+      nrow("\\(A\\le_p B\\)", "\\(A\\) polynomial-time reduces to \\(B\\)") +
+      nrow("\\(A\\le_L B\\)", "\\(A\\) log-space reduces to \\(B\\)") +
+      "</tbody></table></div>");
+
+    var body = $("reference-body");
+    body.innerHTML = closure + decid + maps + complete + pump + thms + notation;
+    TOC.ui.renderMath(body);
+    var pb = $("ref-print"); if (pb) pb.onclick = function () { window.print(); };
+  }
 
   // ---- settings ----------------------------------------------------------
   function renderSettings() {

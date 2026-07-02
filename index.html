@@ -31,6 +31,7 @@
     <nav class="nav">
       <button class="nav-btn active" data-view="study">Study</button>
       <button class="nav-btn" data-view="dashboard">Dashboard</button>
+      <button class="nav-btn" data-view="reference">Reference</button>
       <button class="nav-btn" data-view="settings">Settings</button>
       <button class="icon-btn" id="theme-toggle" title="Toggle light/dark">◐</button>
     </nav>
@@ -77,6 +78,15 @@
         <h3>Weakest topics <span class="muted">(focus your time here)</span></h3>
         <ul class="weak-list" id="weak-list"></ul>
       </div>
+    </section>
+
+    <!-- REFERENCE -->
+    <section id="view-reference" class="view" hidden>
+      <div class="dash-head">
+        <h2>Quick reference <span class="muted small">— the one-pager to memorize</span></h2>
+        <button class="btn ghost small" id="ref-print" type="button">🖨 Print</button>
+      </div>
+      <div id="reference-body"></div>
     </section>
 
     <!-- SETTINGS -->
